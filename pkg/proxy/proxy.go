@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/olzhy/goproxy/internal/modfetch"
@@ -24,8 +23,6 @@ const (
 	ZipSuffix    = ".zip"
 	VInfix       = "/@v/"
 )
-
-var ValidReqPath = regexp.MustCompile("^[\\w|\\d]+.*")
 
 func init() {
 	goPath := os.Getenv("GOPATH")
