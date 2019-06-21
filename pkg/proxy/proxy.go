@@ -2,9 +2,13 @@ package proxy
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/olzhy/goproxy/internal/modfetch"
@@ -13,64 +17,71 @@ import (
 )
 
 const (
-	List   = "/@v/list"
-	Latest = "/@latest"
-	Info   = ".info"
-	Mod    = ".mod"
-	Zip    = ".zip"
+	ListSuffix   = "/@v/list"
+	LatestSuffix = "/@latest"
+	InfoSuffix   = ".info"
+	ModSuffix    = ".mod"
+	ZipSuffix    = ".zip"
+	VInfix       = "/@v/"
 )
 
+var ValidReqPath = regexp.MustCompile("^[\\w|\\d]+.*")
+
 func init() {
-	codehost.WorkRoot = "/tmp"
-	modfetch.PkgMod = "/tmp"
+	goPath := os.Getenv("GOPATH")
+	if "" == goPath {
+		goPath = "/tmp"
+	}
+	// mod dir is $GOPATH/pkg/mod
+	modfetch.PkgMod = filepath.Join(goPath, "pkg", "mod")
+	// work dir is $GOPATH/pkg/mod/cache/vcs
+	codehost.WorkRoot = filepath.Join(modfetch.PkgMod, "cache", "vcs")
 }
 
 func Proxy() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimLeft(r.RequestURI, "/")
-		if len(path) <= 0 {
+		path := strings.Trim(r.RequestURI, "/")
+		log.Printf("%s req path: %s", r.RemoteAddr, path)
+
+		// req path validation
+		if err := pathValidation(path); nil != err {
 			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintln(w, err)
 			return
 		}
-		log.Printf("request path: %s", path)
+
 		switch {
 		// suffix is /@v/list
-		case strings.HasSuffix(path, List):
-			mod := strings.TrimSuffix(path, List)
+		case strings.HasSuffix(path, ListSuffix):
+			mod := strings.TrimSuffix(path, ListSuffix)
 			vers := lookupVersions(mod)
-			fmt.Fprintln(w, strings.Join(vers, "\n"))
+			fmt.Fprintln(w, strings.Join(vers, VInfix))
 			return
 		// suffix is /@latest
-		case strings.HasSuffix(path, Latest):
-			mod := strings.TrimSuffix(path, Latest)
+		case strings.HasSuffix(path, LatestSuffix):
+			mod := strings.TrimSuffix(path, LatestSuffix)
 			rev := lookupLatestRev(mod)
 			j, _ := json.Marshal(rev)
 			fmt.Fprintln(w, string(j))
 			return
 		// suffix is .info
-		case strings.HasSuffix(path, Info):
-			verIndex := strings.LastIndex(path, "/@v/")
-			mod := path[:verIndex]
-			ver := path[verIndex+len("/@v/") : len(path)-len(Info)]
+		case strings.HasSuffix(path, InfoSuffix):
+			mod, ver := parseModAndVersion(path, VInfix, InfoSuffix)
 			rev := loadRev(mod, ver)
 			j, _ := json.Marshal(rev)
 			fmt.Fprintln(w, string(j))
 			return
 		// suffix is .mod
-		case strings.HasSuffix(path, Mod):
-			verIndex := strings.LastIndex(path, "/@v/")
-			mod := path[:verIndex]
-			ver := path[verIndex+len("/@v/") : len(path)-len(Mod)]
+		case strings.HasSuffix(path, ModSuffix):
+			mod, ver := parseModAndVersion(path, VInfix, ModSuffix)
 			rev := loadModContent(mod, ver)
 			fmt.Fprintln(w, string(rev))
 			return
-			// suffix is .mod
-		case strings.HasSuffix(path, Zip):
-			verIndex := strings.LastIndex(path, "/@v/")
-			mod := path[:verIndex]
-			ver := path[verIndex+len("/@v/") : len(path)-len(Zip)]
+		// suffix is .mod
+		case strings.HasSuffix(path, ZipSuffix):
+			mod, ver := parseModAndVersion(path, VInfix, ZipSuffix)
 			zipFile := loadZip(mod, ver)
-			if len(zipFile) <= 0 {
+			if "" == zipFile {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -78,12 +89,48 @@ func Proxy() http.HandlerFunc {
 			return
 		default:
 			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintln(w, "please give me a correct module query")
 		}
 	})
 }
 
+func pathValidation(path string) error {
+	msg := `give me a correct module query,
+	such as github.com/olzhy/quote/@latest`
+	if "" == path {
+		return errors.New("empty path")
+	}
+
+	segments := strings.Split(path, "/")
+	if len(segments) < 3 {
+		return errors.New(msg)
+	}
+
+	suffixes := []string{ListSuffix, LatestSuffix,
+		InfoSuffix, ModSuffix, ZipSuffix}
+	ok := false
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(path, suffix) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		log.Printf("suffix invalid, path: %s", path)
+		return errors.New("suffix should match /@v/list|/@latest|.info|.zip")
+	}
+	return nil
+}
+
+func parseModAndVersion(path, infix, suffix string) (mod string, ver string) {
+	verIndex := strings.LastIndex(path, infix)
+	mod = path[:verIndex]
+	ver = path[verIndex+len(infix) : len(path)-len(suffix)]
+	return
+}
+
 func lookupVersions(mod string) []string {
-	log.Printf("lookup module %s", mod)
+	log.Printf("lookup latest versions, mod: %s", mod)
 	repo, err := modfetch.Lookup(mod)
 	if nil != err {
 		log.Printf("lookup module error, err: %s", err)
@@ -94,7 +141,7 @@ func lookupVersions(mod string) []string {
 }
 
 func lookupLatestRev(mod string) *modfetch.RevInfo {
-	log.Printf("lookup module %s", mod)
+	log.Printf("lookup latest rev, mod: %s", mod)
 	repo, err := modfetch.Lookup(mod)
 	if nil != err {
 		log.Printf("lookup module error, err: %s", err)
@@ -116,12 +163,12 @@ func loadRev(mod, rev string) *modfetch.RevInfo {
 
 func loadModContent(mod, rev string) []byte {
 	log.Printf("load mod content, mod: %s, rev: %s", mod, rev)
-	modContext, err := modfetch.GoMod(mod, rev)
+	modContent, err := modfetch.GoMod(mod, rev)
 	if nil != err {
 		log.Printf("fetch mod content error, err: %s", err)
 		return nil
 	}
-	return modContext
+	return modContent
 }
 
 func loadZip(mod, rev string) string {
