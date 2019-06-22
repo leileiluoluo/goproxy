@@ -81,7 +81,7 @@ func Proxy() http.HandlerFunc {
 			rev := loadModContent(mod, ver)
 			fmt.Fprintln(w, string(rev))
 			return
-		// suffix is .mod
+		// suffix is .zip
 		case strings.HasSuffix(path, ZipSuffix):
 			mod, ver := parseModAndVersion(path, VInfix, ZipSuffix)
 			zipFile := loadZip(mod, ver)
