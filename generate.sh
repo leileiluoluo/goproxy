@@ -32,8 +32,8 @@ cp -r $GOROOT/src/internal/singleflight ./internal/
 cp -r $GOROOT/src/internal/xcoff ./internal/
 
 # replace import paths
-find . -type f -name "*.go" -exec sed -i 's#cmd/go/internal/#github.com/olzhy/goproxy/internal/#g' {} \; 
-find . -type f -name "*.go" -exec sed -i 's#cmd/internal/#github.com/olzhy/goproxy/internal/#g' {} \; 
-find . -type f -name "*.go" -exec sed -i 's#internal/testenv#github.com/olzhy/goproxy/internal/testenv#g' {} \; 
-find . -type f -name "*.go" -exec sed -i 's#internal/singleflight#github.com/olzhy/goproxy/internal/singleflight#g' {} \; 
-find . -type f -name "*.go" -exec sed -i 's#internal/xcoff#github.com/olzhy/goproxy/internal/xcoff#g' {} \; 
+find . -type f -name "*.go" -exec sed -i '' 's#cmd/go/internal/#github.com/olzhy/goproxy/internal/#g' {} \; 
+find . -type f -name "*.go" -exec sed -i '' 's#cmd/internal/#github.com/olzhy/goproxy/internal/#g' {} \; 
+find . -type f -name "*.go" -exec sed -i '' 's#internal/testenv#github.com/olzhy/goproxy/internal/testenv#g' {} \; 
+find . -type f -name "*.go" -exec sed -i '' 's#internal/singleflight#github.com/olzhy/goproxy/internal/singleflight#g' {} \; 
+find . -type f -name "*.go" -exec sed -i '' 's#internal/xcoff#github.com/olzhy/goproxy/internal/xcoff#g' {} \; 

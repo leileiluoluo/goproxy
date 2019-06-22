@@ -22,6 +22,8 @@ const (
 	ModSuffix    = ".mod"
 	ZipSuffix    = ".zip"
 	VInfix       = "/@v/"
+
+	UpperCaseSign = "%21"
 )
 
 func init() {
@@ -46,6 +48,11 @@ func Proxy() http.HandlerFunc {
 			fmt.Fprintln(w, err)
 			return
 		}
+
+		// path revision
+		// such as gopkg.in/%21data%21dog/dd-trace-go.v1/@v/v1.10.0.info
+		// revise to gopkg.in/DataDog/dd-trace-go.v1/@v/v1.10.0.info
+		path = pathRevision(path)
 
 		switch {
 		// suffix is /@v/list
@@ -117,6 +124,25 @@ func pathValidation(path string) error {
 		return errors.New("suffix should match /@v/list|/@latest|.info|.zip")
 	}
 	return nil
+}
+
+func pathRevision(path string) string {
+	after := ""
+	i := 0
+	for i < len(path) {
+		c := path[i]
+		if '%' == c {
+			if i+3 < len(path) &&
+				UpperCaseSign == path[i:i+3] {
+				after += strings.ToUpper(string(path[i+3]))
+				i += 4
+				continue
+			}
+		}
+		after += string(c)
+		i++
+	}
+	return after
 }
 
 func parseModAndVersion(path, infix, suffix string) (mod string, ver string) {
